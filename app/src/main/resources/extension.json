@@ -1,8 +1,13 @@
 {
-  "entrypoint": "com.gufli.brickmovingblocks.app.BrickMovingBlocks",
-  "name": "BrickMovingBlocks",
+  "entrypoint": "org.minestombrick.movablestructures.app.BrickMovableStructures",
+  "name": "BrickMovableStructures",
   "version": "1.0.0",
-  "dependencies": [
-    "BrickWorlds"
-  ]
+  "externalDependencies": {
+    "repositories": [
+      {"name": "Jorisg", "url": "https://repo.jorisg.com/snapshots"}
+    ],
+    "artifacts": [
+      "org.minestombrick.schematics:api:1.0-SNAPSHOT"
+    ]
+  }
 }

@@ -1,6 +1,5 @@
-package com.gufli.brickmovingblocks.app;
+package org.minestombrick.movablestructures.api;
 
-import com.gufli.brickmovingblocks.app.schematic.SpongeSchematic;
 import net.minestom.server.coordinate.Point;
 import net.minestom.server.coordinate.Pos;
 import net.minestom.server.coordinate.Vec;
@@ -15,10 +14,14 @@ import net.minestom.server.instance.block.Block;
 import net.minestom.server.item.ItemStack;
 import net.minestom.server.potion.Potion;
 import net.minestom.server.potion.PotionEffect;
+import org.minestombrick.schematics.api.RegionBlock;
+import org.minestombrick.schematics.api.Schematic;
 
 import java.util.*;
 
 public class MovableStructure {
+
+    private final static double BOAT_Y_OFFSET = -.3;
 
     protected final Instance instance;
     protected Point position;
@@ -30,12 +33,17 @@ public class MovableStructure {
         this.position = position;
     }
 
+    public void remove() {
+        stacks.forEach(Stack::remove);
+        stacks.clear();
+    }
+
     public void teleport(Point position) {
         this.position = position;
         // calculate
 
         for (Stack stack : stacks) {
-            Pos absolute = new Pos(position.add(stack.origin()));
+            Pos absolute = new Pos(position.add(stack.origin()).add(0, BOAT_Y_OFFSET, 0));
             if (!instance.isChunkLoaded(absolute)) {
                 instance.loadChunk(absolute).join();
             }
@@ -43,36 +51,36 @@ public class MovableStructure {
         }
     }
 
-    public void load(SpongeSchematic schematic) {
-        List<SpongeSchematic.RegionBlock> blocks = schematic.blocks();
+    public void load(Schematic schematic) {
+        Collection<RegionBlock> blocks = schematic.blocks();
         for (int x = 0; x < schematic.width(); x++) {
             for (int z = 0; z < schematic.length(); z++) {
                 final int finalX = x, finalZ = z;
-                List<SpongeSchematic.RegionBlock> column = blocks.stream()
-                        .filter(b -> b.position().x() == finalX && b.position().z() == finalZ)
+                List<RegionBlock> column = blocks.stream()
+                        .filter(b -> b.relativePosition().x() == finalX && b.relativePosition().z() == finalZ)
                         .filter(b -> !b.blockState().isAir())
-                        .sorted(Comparator.comparingDouble(b -> b.position().y()))
+                        .filter(b -> !b.blockState().isLiquid())
+                        .sorted(Comparator.comparingDouble(b -> b.relativePosition().y()))
                         .toList();
 
                 if (column.isEmpty()) continue;
 
-                int prevY = column.get(0).position().blockY();
+                int prevY = column.get(0).relativePosition().blockY();
                 int startIndex = 0;
-                for ( int i = 0; i < column.size(); i++ ) {
-                    SpongeSchematic.RegionBlock b = column.get(i);
-
-                    if ( b.position().blockY() != prevY + 1 ) {
-                        addStack(new Vec(x, column.get(startIndex).position().y(), z), column.subList(startIndex, i).stream()
-                                .map(SpongeSchematic.RegionBlock::blockState).toArray(Block[]::new));
+                for (int i = 1; i < column.size(); i++) {
+                    RegionBlock b = column.get(i);
+                    if (b.relativePosition().blockY() != prevY + 1) {
+                        addStack(new Vec(x, column.get(startIndex).relativePosition().y(), z), column.subList(startIndex, i).stream()
+                                .map(RegionBlock::blockState).toArray(Block[]::new));
                         startIndex = i;
                     }
 
-                    prevY = b.position().blockY();
+                    prevY = b.relativePosition().blockY();
                 }
 
                 // top part
-                addStack(new Vec(x, column.get(startIndex).position().y(), z), column.subList(startIndex, column.size()).stream()
-                        .map(SpongeSchematic.RegionBlock::blockState).toArray(Block[]::new));
+                addStack(new Vec(x, column.get(startIndex).relativePosition().y(), z), column.subList(startIndex, column.size()).stream()
+                        .map(RegionBlock::blockState).toArray(Block[]::new));
             }
         }
     }
@@ -88,7 +96,8 @@ public class MovableStructure {
 
         Entity previous = boat;
         for (Block block : blocks) {
-            if ( !block.registry().isBlockEntity() ) {
+            // normal blocks
+            if (!block.registry().isBlockEntity()) {
                 Entity pufferfish = spawnPufferfish(absolute);
                 previous.addPassenger(pufferfish);
                 passengers.add(pufferfish);
@@ -97,16 +106,10 @@ public class MovableStructure {
                 pufferfish.addPassenger(fallingBlock);
                 passengers.add(fallingBlock);
                 previous = fallingBlock;
-            } else {
-                if ( block.registry().material() == null ) {
-                    continue;
-                }
-
-                Entity armorStand = spawnArmorStand(absolute, block);
-                previous.addPassenger(armorStand);
-                passengers.add(armorStand);
-                previous = armorStand;
+                continue;
             }
+
+            // TODO block tiles
         }
 
         Stack stack = new Stack(origin, boat, passengers);
@@ -121,6 +124,7 @@ public class MovableStructure {
         meta.setType(BoatMeta.Type.ACACIA);
         boat.setNoGravity(true);
         boat.setInvisible(true);
+        boat.addEffect(new Potion(PotionEffect.INVISIBILITY, (byte) 1, Integer.MAX_VALUE));
         boat.setInstance(instance, position);
         return boat;
     }
@@ -143,46 +147,7 @@ public class MovableStructure {
         return pufferfish;
     }
 
-    protected Entity spawnArmorStand(Point position, Block block) {
-        LivingEntity armorStand = new LivingEntity(EntityType.ARMOR_STAND);
-        armorStand.setInvisible(true);
-        armorStand.setHelmet(ItemStack.fromNBT(block.registry().material(), block.nbt()));
-        armorStand.setNoGravity(true);
-        armorStand.setInstance(instance, position);
-        ArmorStandMeta meta = (ArmorStandMeta) armorStand.getEntityMeta();
-
-        System.out.println(block.name());
-
-        if ( block.getProperty("facing") != null ) {
-            FacingDirection direction = FacingDirection.valueOf(block.getProperty("facing").toUpperCase());
-            meta.setHeadRotation(direction.vec());
-        }
-
-        return armorStand;
-    }
-
-    enum FacingDirection {
-        SOUTH(0, 0, 0),
-        EAST(0, -90, 0),
-        NORTH(0, 180, 0),
-        WEST(0, 90, 0),
-        UP(0, 0, 90),
-        DOWN(0, 0, -90);
-
-        final float roll;
-        final float yaw;
-        final float pitch;
-
-        FacingDirection(float roll, float yaw, float pitch) {
-            this.roll = roll;
-            this.yaw = yaw;
-            this.pitch = pitch;
-        }
-
-        Vec vec() {
-            return new Vec(roll, yaw, pitch);
-        }
-    }
+    //
 
     static class Stack {
 
@@ -207,6 +172,11 @@ public class MovableStructure {
 
         public Set<Entity> passengers() {
             return passengers;
+        }
+
+        private void remove() {
+            passengers.forEach(Entity::remove);
+            boat.remove();
         }
     }
 

@@ -1,4 +1,4 @@
-rootProject.name = 'BrickMovingBlocks'
+rootProject.name = 'BrickMovableStructures'
 
 include (
         'api',
