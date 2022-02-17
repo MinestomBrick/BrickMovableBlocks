@@ -1,0 +1,8 @@
+{
+  "entrypoint": "com.gufli.brickmovingblocks.app.BrickMovingBlocks",
+  "name": "BrickMovingBlocks",
+  "version": "1.0.0",
+  "dependencies": [
+    "BrickWorlds"
+  ]
+}
